@@ -83,6 +83,10 @@ export default function Home() {
     console.log('🔍 Starting research with question:', newQuestion);
     console.log('📋 Current chatBoxSettings:', chatBoxSettings);
     
+    // Reset flags for new research
+    setIsHistoryLoad(false);
+    setCurrentResearchSaved(false);
+    
     setShowResult(true);
     setLoading(true);
     setQuestion(newQuestion);
@@ -151,6 +155,10 @@ export default function Home() {
     setPromptValue("");
     setIsStopped(false);
     
+    // Reset save tracking flags
+    setIsHistoryLoad(false);
+    setCurrentResearchSaved(false);
+    
     // Clear previous research data
     setQuestion("");
     setAnswer("");
@@ -202,25 +210,49 @@ export default function Home() {
     setSidebarOpen(false);
   };
 
+  // Track if current research has been saved
+  const [currentResearchSaved, setCurrentResearchSaved] = useState(false);
+  const [isHistoryLoad, setIsHistoryLoad] = useState(false);
+
   // Save completed research to history
   useEffect(() => {
     // Only save when research is complete and not loading
-    if (showResult && !loading && answer && question && orderedData.length > 0) {
-      // Check if this is a new research (not loaded from history)
-      const isNewResearch = !history.some(item => 
-        item.question === question && item.answer === answer
-      );
-      
-      if (isNewResearch) {
-        saveResearch(question, answer, orderedData);
+    if (showResult && !loading && question && orderedData.length > 0) {
+      // Don't save if this was loaded from history or already saved
+      if (!isHistoryLoad && !currentResearchSaved) {
+        // Extract answer from orderedData if answer state is empty
+        let finalAnswer = answer;
+        if (!finalAnswer) {
+          // Look for report content in orderedData
+          const reportItems = orderedData.filter(item => item.type === 'report' && item.output);
+          if (reportItems.length > 0) {
+            finalAnswer = reportItems.map(item => item.output).join('\n');
+          } else {
+            // If no report found, create a summary from available data
+            const summaryItems = orderedData.filter(item => 
+              item.output && !['question', 'langgraphButton', 'differences'].includes(item.type)
+            );
+            if (summaryItems.length > 0) {
+              finalAnswer = summaryItems.map(item => item.output).join('\n');
+            } else {
+              finalAnswer = 'Research completed - see details in research data';
+            }
+          }
+        }
+        
+        console.log('💾 Saving new research to history:', question, 'Answer length:', finalAnswer.length);
+        saveResearch(question, finalAnswer, orderedData);
+        setCurrentResearchSaved(true);
       }
     }
-  }, [showResult, loading, answer, question, orderedData, history, saveResearch]);
+  }, [showResult, loading, answer, question, orderedData, currentResearchSaved, isHistoryLoad, saveResearch]);
 
   // Handle selecting a research from history
   const handleSelectResearch = (id: string) => {
     const research = getResearchById(id);
     if (research) {
+      setIsHistoryLoad(true);  // Mark as loaded from history
+      setCurrentResearchSaved(true);  // Already saved
       setShowResult(true);
       setQuestion(research.question);
       setPromptValue("");

@@ -39,6 +39,9 @@ class WebSocketManager:
                     if message == "ping":
                         await websocket.send_text("pong")
                     else:
+                        # Ensure proper UTF-8 encoding for WebSocket messages
+                        if isinstance(message, str):
+                            message = message.encode('utf-8').decode('utf-8')
                         await websocket.send_text(message)
                 else:
                     break

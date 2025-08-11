@@ -741,10 +741,40 @@ class ResearchConductor:
                 # Instantiate the retriever with the sub-query
                 retriever = retriever_class(query, query_domains=query_domains)
 
-                # Perform the search using the current retriever
-                search_results = await asyncio.to_thread(
-                    retriever.search, max_results=self.researcher.cfg.max_search_results_per_query
-                )
+                # Perform the search using the current retriever with timeout for LinkedIn
+                if "linkedin" in retriever_class.__name__.lower():
+                    # Add 30 second timeout for LinkedIn searches
+                    try:
+                        search_results = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                retriever.search, 
+                                max_results=self.researcher.cfg.max_search_results_per_query
+                            ),
+                            timeout=60.0  # 30 second timeout
+                        )
+                    except asyncio.TimeoutError:
+                        self.logger.warning(f"LinkedIn search timed out after 30 seconds for query: {query}")
+                        search_results = []  # Treat timeout as empty results to trigger fallback
+                else:
+                    # Normal search for other retrievers
+                    search_results = await asyncio.to_thread(
+                        retriever.search, max_results=self.researcher.cfg.max_search_results_per_query
+                    )
+                
+                # Check if LinkedIn returned no results and fall back to Tavily
+                if "linkedin" in retriever_class.__name__.lower() and (not search_results or len(search_results) == 0):
+                    self.logger.warning("LinkedIn search returned no results, falling back to Tavily")
+                    try:
+                        from gpt_researcher.retrievers import TavilySearch
+                        enhanced_query = f"{query} LinkedIn profiles Sales Navigator"
+                        tavily_retriever = TavilySearch(enhanced_query, query_domains=query_domains)
+                        search_results = await asyncio.to_thread(
+                            tavily_retriever.search, max_results=self.researcher.cfg.max_search_results_per_query
+                        )
+                        self.logger.info(f"Tavily fallback returned {len(search_results) if search_results else 0} results")
+                    except Exception as e:
+                        self.logger.error(f"Tavily fallback also failed: {e}")
+                        search_results = []
 
                 # Collect new URLs from search results
                 search_urls = [url.get("href") for url in search_results if url.get("href")]

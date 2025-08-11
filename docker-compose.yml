@@ -7,11 +7,16 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       TAVILY_API_KEY: ${TAVILY_API_KEY}
       LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
+      RETRIEVER: ${RETRIEVER}
+      LINKEDIN_USERNAME: ${LINKEDIN_USERNAME}
+      LINKEDIN_PASSWORD: ${LINKEDIN_PASSWORD}
+      LINKEDIN_SESSION_TOKEN: ${LINKEDIN_SESSION_TOKEN}
       LOGGING_LEVEL: INFO
     volumes:
       - ${PWD}/my-docs:/usr/src/app/my-docs:rw
       - ${PWD}/outputs:/usr/src/app/outputs:rw
       - ${PWD}/logs:/usr/src/app/logs:rw
+      - ${PWD}/data:/usr/src/app/data:ro
     user: root
     restart: always
     ports:

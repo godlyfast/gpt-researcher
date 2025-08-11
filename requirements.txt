@@ -126,5 +126,8 @@ zipp>=3.21.0
 zopfli>=0.2.3.post1
 zstandard>=0.23.0
 # Model Context Protocol support (optional)
-mcp>=1.0.0
+# mcp>=1.9.1 already included above
 langchain-mcp-adapters>=0.1.0  # LangChain MCP adapters for tool integration
+# LinkedIn Sales Navigator support
+selenium>=4.15.2  # Web scraping for LinkedIn
+webdriver-manager>=4.0.1  # Automatic Chrome driver management

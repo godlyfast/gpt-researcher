@@ -34,7 +34,27 @@ export interface ErrorData extends BaseData {
   output: string;
 }
 
-export type Data = BasicData | LanggraphButtonData | DifferencesData | QuestionData | ChatData | ErrorData;
+export interface ReportData extends BaseData {
+  type: 'report';
+  content?: string;
+  output: string;
+}
+
+export interface LogsData extends BaseData {
+  type: 'logs';
+  content: string;
+  output: string;
+  metadata?: any;
+}
+
+export interface GenericData extends BaseData {
+  type: string;
+  content?: string;
+  output?: string;
+  metadata?: any;
+}
+
+export type Data = BasicData | LanggraphButtonData | DifferencesData | QuestionData | ChatData | ErrorData | ReportData | LogsData | GenericData;
 
 export interface ChatBoxSettings {
   report_type: string;

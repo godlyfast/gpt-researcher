@@ -276,6 +276,10 @@ class GenericLLMProvider:
 
     async def _send_output(self, content, websocket=None):
         if websocket is not None:
+            # Ensure content is properly encoded as UTF-8
+            if isinstance(content, str):
+                # Normalize Unicode content to ensure proper encoding
+                content = content.encode('utf-8').decode('utf-8')
             await websocket.send_json({"type": "report", "output": content})
         elif self.verbose:
             print(f"{Fore.GREEN}{content}{Style.RESET_ALL}")

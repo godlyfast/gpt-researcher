@@ -28,7 +28,7 @@ class CustomLogsHandler:
         self.timestamp = datetime.now().isoformat()
         # Initialize log file with metadata
         os.makedirs("outputs", exist_ok=True)
-        with open(self.log_file, 'w') as f:
+        with open(self.log_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "timestamp": self.timestamp,
                 "events": [],
@@ -39,7 +39,7 @@ class CustomLogsHandler:
                     "report": "",
                     "costs": 0.0
                 }
-            }, f, indent=2)
+            }, f, indent=2, ensure_ascii=False)
 
     async def send_json(self, data: Dict[str, Any]) -> None:
         """Store log data and send to websocket"""
@@ -47,8 +47,8 @@ class CustomLogsHandler:
         if self.websocket:
             await self.websocket.send_json(data)
             
-        # Read current log file
-        with open(self.log_file, 'r') as f:
+        # Read current log file with UTF-8 encoding
+        with open(self.log_file, 'r', encoding='utf-8') as f:
             log_data = json.load(f)
             
         # Update appropriate section based on data type
@@ -58,13 +58,18 @@ class CustomLogsHandler:
                 "type": "event",
                 "data": data
             })
+        elif data.get('type') == 'report':
+            # Accumulate report content
+            if 'report' not in log_data['content']:
+                log_data['content']['report'] = ""
+            log_data['content']['report'] += data.get('output', '')
         else:
             # Update content section for other types of data
             log_data['content'].update(data)
             
-        # Save updated log file
-        with open(self.log_file, 'w') as f:
-            json.dump(log_data, f, indent=2)
+        # Save updated log file with UTF-8 encoding
+        with open(self.log_file, 'w', encoding='utf-8') as f:
+            json.dump(log_data, f, indent=2, ensure_ascii=False)
         logger.debug(f"Log entry written to: {self.log_file}")
 
 
@@ -291,6 +296,9 @@ async def handle_websocket_communication(websocket, manager):
         while True:
             try:
                 data = await websocket.receive_text()
+                # Ensure proper UTF-8 handling for received data
+                if isinstance(data, str):
+                    data = data.encode('utf-8').decode('utf-8')
                 
                 if data == "ping":
                     await websocket.send_text("pong")
