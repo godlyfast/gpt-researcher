@@ -29,7 +29,7 @@ class LinkedInSalesNavigator:
     
     def __init__(self, query, headers=None, topic="general", query_domains=None):
         """
-        Initializes the LinkedInSalesNavigator object.
+        Initializes the LinkedInSalesNavigator object with enhanced anti-detection.
         
         Args:
             query (str): The search query string.
@@ -55,9 +55,16 @@ class LinkedInSalesNavigator:
         self.cookies_file = Path("linkedin_cookies.pkl")
         self.has_saved_session = self.cookies_file.exists()
         
-        # Initialize browser options
+        # Initialize browser and anti-detection components
         self.driver = None
         self.logged_in = False
+        self.stealth_browser = None
+        self.human_sim = None
+        self.rate_limiter = None
+        
+        # Session tracking
+        self.session_start_time = time.time()
+        self.pages_visited = 0
         
     def get_credential(self, key):
         """
@@ -85,129 +92,108 @@ class LinkedInSalesNavigator:
     
     def init_browser(self):
         """
-        Initialize Chrome browser with appropriate options for Docker environment
+        Initialize browser with full anti-detection stack
         """
         if self.driver:
             return
-            
-        chrome_options = Options()
-        
-        # Essential Docker/container configurations
-        chrome_options.add_argument("--headless=new")  # Use new headless mode
-        chrome_options.add_argument("--no-sandbox")  # Required for Docker
-        chrome_options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-        chrome_options.add_argument("--disable-gpu")  # GPU not available in Docker
-        chrome_options.add_argument("--disable-software-rasterizer")
-        
-        # Additional stability options for containers
-        chrome_options.add_argument("--disable-extensions")
-        chrome_options.add_argument("--disable-setuid-sandbox")
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        
-        # Memory and performance optimizations
-        chrome_options.add_argument("--memory-pressure-off")
-        chrome_options.add_argument("--max_old_space_size=4096")
-        chrome_options.add_argument("--disable-background-timer-throttling")
-        chrome_options.add_argument("--disable-renderer-backgrounding")
-        chrome_options.add_argument("--disable-features=TranslateUI")
-        chrome_options.add_argument("--disable-ipc-flooding-protection")
-        
-        # Remove single-process as it can cause issues with some setups
-        if os.environ.get('SINGLE_PROCESS_CHROME'):
-            chrome_options.add_argument("--single-process")
-        
-        # Window and display settings
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--start-maximized")
-        
-        # Virtual display for Docker
-        if os.environ.get('DISPLAY'):
-            chrome_options.add_argument(f"--display={os.environ.get('DISPLAY')}")
-        elif os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER'):
-            chrome_options.add_argument("--display=:99")
-        
-        # User agent to avoid detection
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        
-        # Disable images and unnecessary features for faster loading
-        prefs = {
-            "profile.managed_default_content_settings.images": 2,
-            "profile.default_content_setting_values.notifications": 2,
-            "profile.managed_default_content_settings.stylesheets": 2,
-            "profile.managed_default_content_settings.cookies": 1,
-            "profile.managed_default_content_settings.javascript": 1,
-            "profile.managed_default_content_settings.plugins": 2,
-            "profile.managed_default_content_settings.popups": 2,
-            "profile.managed_default_content_settings.geolocation": 2,
-            "profile.managed_default_content_settings.media_stream": 2,
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option("useAutomationExtension", False)
-        
-        # Set binary location for Docker environment
-        # Check if running in Docker
-        if os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER'):
-            # Use the Chrome binary installed in Docker
-            if platform.system() == "Linux":
-                possible_chrome_paths = [
-                    "/usr/bin/chromium",
-                    "/usr/bin/chromium-browser",
-                    "/usr/bin/google-chrome",
-                    "/usr/bin/google-chrome-stable",
-                    "/usr/local/bin/chrome",
-                ]
-                for chrome_path in possible_chrome_paths:
-                    if os.path.exists(chrome_path):
-                        chrome_options.binary_location = chrome_path
-                        logger.info(f"Using Chrome binary at: {chrome_path}")
-                        break
         
         try:
-            # Try using the system chromedriver first (installed in Docker)
-            if os.path.exists('/usr/bin/chromedriver'):
-                try:
-                    service = Service('/usr/bin/chromedriver')
-                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                    logger.info("Chrome browser initialized with system chromedriver")
-                except Exception as e:
-                    logger.error(f"Failed to initialize with system chromedriver: {e}")
-                    # Try webdriver-manager as fallback
-                    try:
-                        service = Service(ChromeDriverManager().install())
-                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                        logger.info("Chrome browser initialized with webdriver-manager")
-                    except Exception as e2:
-                        logger.error(f"Failed with both webdriver-manager and system driver: {e2}")
-                        raise
-            else:
-                # Try webdriver-manager
-                try:
-                    service = Service(ChromeDriverManager().install())
-                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                    logger.info("Chrome browser initialized with webdriver-manager")
-                except Exception as e:
-                    logger.error(f"Failed with webdriver-manager: {e}")
-                    # Last resort - try without service
-                    try:
-                        self.driver = webdriver.Chrome(options=chrome_options)
-                        logger.info("Chrome browser initialized without service")
-                    except Exception as e2:
-                        logger.error(f"Failed all initialization attempts: {e2}")
-                        raise
-                
-            # Set timeouts
-            self.driver.set_page_load_timeout(30)
-            self.driver.implicitly_wait(10)
+            # Initialize stealth browser
+            from .stealth_browser import StealthBrowser
+            from .human_simulator import HumanSimulator
+            from .rate_limiter import RateLimiter
+            
+            # Check rate limits before proceeding
+            self.rate_limiter = RateLimiter()
+            can_proceed, message = self.rate_limiter.can_search()
+            if not can_proceed:
+                logger.warning(f"Rate limit hit: {message}")
+                # Return without raising exception to gracefully handle rate limiting
+                self.driver = None
+                return
+            
+            # Initialize stealth browser with anti-detection
+            self.stealth_browser = StealthBrowser()
+            
+            # Try undetected-chromedriver first if available
+            try:
+                import undetected_chromedriver
+                use_undetected = True
+                logger.info("Using undetected-chromedriver for maximum stealth")
+            except ImportError:
+                use_undetected = False
+                logger.info("Using enhanced Selenium with stealth settings")
+            
+            self.driver = self.stealth_browser.init_stealth_browser(use_undetected=use_undetected)
+            
+            # Initialize human simulator for behavior mimicking
+            self.human_sim = HumanSimulator()
+            
+            # Log successful initialization
+            logger.info("Browser initialized with anti-detection measures")
+            
+            # Track page visit
+            self.pages_visited += 1
             
         except Exception as e:
-            logger.error(f"Failed to initialize Chrome browser: {e}")
-            logger.error(f"Chrome options: {chrome_options.arguments}")
-            # Don't raise exception, return gracefully
-            logger.warning("LinkedIn retriever will return empty results due to Chrome initialization failure")
+            logger.error(f"Failed to initialize browser with anti-detection: {e}")
+            logger.warning("LinkedIn retriever will return empty results due to browser initialization failure")
             self.driver = None
+
+    def smart_navigation(self, url):
+        """
+        Navigate with human-like behavior to avoid detection
+        
+        Args:
+            url (str): Target URL to navigate to
+        """
+        if not self.driver:
+            logger.error("Browser not initialized")
+            return
+        
+        # Check if we have human simulator
+        if not self.human_sim:
+            # Fallback to regular navigation
+            self.driver.get(url)
+            time.sleep(random.uniform(2, 4))
+            return
+        
+        # Add random browsing before target (30% chance)
+        if random.random() < 0.3 and self.pages_visited > 0:
+            decoy_urls = [
+                "https://www.linkedin.com/feed/",
+                "https://www.linkedin.com/mynetwork/",
+                "https://www.linkedin.com/jobs/",
+                "https://www.linkedin.com/messaging/"
+            ]
+            decoy = random.choice(decoy_urls)
+            logger.debug(f"Visiting decoy page: {decoy}")
+            self.driver.get(decoy)
+            self.human_sim.random_delay(2, 5)
+            self.human_sim.random_scroll(self.driver)
+        
+        # Navigate to target URL
+        self.driver.get(url)
+        
+        # Human-like page interaction
+        self.human_sim.random_delay(1, 3)
+        
+        # Random scroll pattern
+        if random.random() < 0.7:  # 70% chance to scroll
+            self.human_sim.random_scroll(self.driver)
+        
+        # Random mouse movements
+        if random.random() < 0.5:  # 50% chance
+            self.human_sim.human_mouse_movement(self.driver)
+        
+        # Track page visit
+        self.pages_visited += 1
+        
+        # Record for rate limiting if available
+        if self.rate_limiter:
+            # Don't record decoy pages as searches
+            if "sales/search" in url:
+                self.rate_limiter.record_search(success=True)
     
     def login(self):
         """
@@ -255,27 +241,43 @@ class LinkedInSalesNavigator:
             logger.info(f"Password length: {len(self.password)}")
             logger.info(f"Password (repr for debugging): {repr(self.password)}")
             
-            # Navigate to LinkedIn login page
+            # Navigate to LinkedIn login page with human-like behavior
             logger.info("Navigating to LinkedIn login page...")
-            self.driver.get("https://www.linkedin.com/login")
-            time.sleep(3)
+            self.smart_navigation("https://www.linkedin.com/login")
             
             # Log current page state
             logger.info(f"Current URL before login: {self.driver.current_url}")
             logger.info(f"Page title: {self.driver.title}")
             
-            # Enter credentials
+            # Enter credentials with human-like typing
             logger.info("Entering username...")
             username_field = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.ID, "username"))
             )
-            username_field.clear()
-            username_field.send_keys(self.username)
+            
+            # Move mouse to username field with human-like movement
+            if self.human_sim:
+                self.human_sim.human_mouse_movement(self.driver, username_field)
+                username_field.click()
+                self.human_sim.random_delay(0.5, 1)
+                self.human_sim.human_typing(username_field, self.username, make_typos=True)
+            else:
+                username_field.clear()
+                username_field.send_keys(self.username)
             
             logger.info("Entering password...")
             password_field = self.driver.find_element(By.ID, "password")
-            password_field.clear()
-            password_field.send_keys(self.password)
+            
+            # Move to password field and type with human simulation
+            if self.human_sim:
+                self.human_sim.random_delay(0.5, 1.5)
+                self.human_sim.human_mouse_movement(self.driver, password_field)
+                password_field.click()
+                self.human_sim.random_delay(0.3, 0.7)
+                self.human_sim.human_typing(password_field, self.password, make_typos=False)  # No typos in password
+            else:
+                password_field.clear()
+                password_field.send_keys(self.password)
             
             # Take screenshot before clicking login
             try:
@@ -853,8 +855,11 @@ class LinkedInSalesNavigator:
             search_url = self.build_sales_nav_url(filters, search_type)
             logger.info(f"Trying optimized search: {search_url}")
             
-            self.driver.get(search_url)
-            time.sleep(5)
+            self.smart_navigation(search_url)
+            if self.human_sim:
+                self.human_sim.random_delay(3, 7)
+            else:
+                time.sleep(5)
             
             results = self._extract_search_results(search_type, max_results)
             
@@ -867,8 +872,13 @@ class LinkedInSalesNavigator:
         except Exception as e:
             logger.error(f"Optimized search failed: {e}")
         
-        # Add delay between strategies to avoid rate limiting
-        time.sleep(15)
+        # Add randomized delay between strategies to avoid rate limiting
+        if self.human_sim:
+            delay = self.rate_limiter.get_delay("search") if self.rate_limiter else random.uniform(20, 40)
+            logger.debug(f"Waiting {delay:.1f} seconds before next strategy")
+            time.sleep(delay)
+        else:
+            time.sleep(random.uniform(15, 25))
         
         # Strategy 2: Simplified keywords search
         try:
@@ -901,8 +911,13 @@ class LinkedInSalesNavigator:
         except Exception as e:
             logger.error(f"Simplified search failed: {e}")
         
-        # Add delay between strategies to avoid rate limiting
-        time.sleep(15)
+        # Add randomized delay between strategies to avoid rate limiting
+        if self.human_sim:
+            delay = self.rate_limiter.get_delay("search") if self.rate_limiter else random.uniform(20, 40)
+            logger.debug(f"Waiting {delay:.1f} seconds before next strategy")
+            time.sleep(delay)
+        else:
+            time.sleep(random.uniform(15, 25))
         
         # Strategy 3: Minimal search (location only)
         try:
@@ -916,8 +931,11 @@ class LinkedInSalesNavigator:
             search_url = self.build_sales_nav_url(minimal_filters, search_type)
             logger.info(f"Trying minimal search: {search_url}")
             
-            self.driver.get(search_url)
-            time.sleep(5)
+            self.smart_navigation(search_url)
+            if self.human_sim:
+                self.human_sim.random_delay(3, 7)
+            else:
+                time.sleep(5)
             
             results = self._extract_search_results(search_type, max_results)
             
@@ -930,8 +948,13 @@ class LinkedInSalesNavigator:
         except Exception as e:
             logger.error(f"Minimal search failed: {e}")
         
-        # Add delay between strategies to avoid rate limiting
-        time.sleep(15)
+        # Add randomized delay between strategies to avoid rate limiting
+        if self.human_sim:
+            delay = self.rate_limiter.get_delay("search") if self.rate_limiter else random.uniform(20, 40)
+            logger.debug(f"Waiting {delay:.1f} seconds before next strategy")
+            time.sleep(delay)
+        else:
+            time.sleep(random.uniform(15, 25))
         
         # Strategy 4: OR-based broadening for AI post-processing
         try:
@@ -948,8 +971,11 @@ class LinkedInSalesNavigator:
             logger.info(f"🎯 Trying OR broadening search: {search_url}")
             logger.info(f"OR Keywords: {or_keywords}")
             
-            self.driver.get(search_url)
-            time.sleep(5)
+            self.smart_navigation(search_url)
+            if self.human_sim:
+                self.human_sim.random_delay(3, 7)
+            else:
+                time.sleep(5)
             
             results = self._extract_search_results(search_type, max_results * 2)  # Get more results for AI filtering
             
@@ -972,8 +998,13 @@ class LinkedInSalesNavigator:
         except Exception as e:
             logger.error(f"OR broadening search failed: {e}")
         
-        # Add delay between strategies to avoid rate limiting
-        time.sleep(15)
+        # Add randomized delay between strategies to avoid rate limiting
+        if self.human_sim:
+            delay = self.rate_limiter.get_delay("search") if self.rate_limiter else random.uniform(20, 40)
+            logger.debug(f"Waiting {delay:.1f} seconds before next strategy")
+            time.sleep(delay)
+        else:
+            time.sleep(random.uniform(15, 25))
         
         # Strategy 5: Ultra-broad location-only search for maximum data
         try:

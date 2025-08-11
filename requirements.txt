@@ -130,4 +130,7 @@ zstandard>=0.23.0
 langchain-mcp-adapters>=0.1.0  # LangChain MCP adapters for tool integration
 # LinkedIn Sales Navigator support
 selenium>=4.15.2  # Web scraping for LinkedIn
+undetected-chromedriver>=3.5.4  # Anti-detection for LinkedIn scraping
+selenium-stealth>=1.0.6  # Stealth mode for Selenium
+fake-useragent>=1.4.0  # Random user agent generation
 webdriver-manager>=4.0.1  # Automatic Chrome driver management
