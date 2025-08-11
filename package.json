@@ -1,0 +1,35 @@
+{
+  "name": "gpt-researcher-mcp",
+  "version": "1.0.0",
+  "description": "GPT Researcher with MCP Playwright integration",
+  "main": "index.js",
+  "scripts": {
+    "install-mcp": "npx @modelcontextprotocol/install-node-mcp-server @mcp-get/playwright",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report",
+    "install-browsers": "npx playwright install",
+    "setup": "npm run install-mcp && npm run install-browsers"
+  },
+  "keywords": [
+    "gpt-researcher",
+    "mcp",
+    "playwright", 
+    "testing",
+    "e2e"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  },
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "@modelcontextprotocol/sdk": "latest"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

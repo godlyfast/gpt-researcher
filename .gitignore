@@ -52,3 +52,56 @@ server_log.txt
 .cursorrules
 CURSOR_RULES.md
 /.history
+
+# LinkedIn sensitive data - NEVER COMMIT
+linkedin_cookies*.json
+linkedin_cookies.pkl
+linkedin_session.json
+li_at_token.txt
+data/linkedin_cookies*.json
+data/li_at_token.txt
+linkedin_logged_in.png
+linkedin_manual_login.py
+linkedin_session_token.txt
+*linkedin*token*
+*linkedin*cookie*
+*li_at*
+
+# Playwright screenshots
+playwright*.png
+/tmp/linkedin*.png
+
+# Test and debug files
+test_*.py
+debug_*.py
+quick-test.py
+diagnostic.py
+test_*.json
+response*.json
+
+# Temporary scripts
+*.sh
+*.command
+apply-fix.sh
+full-restart.sh
+start_*.py
+view_*.py
+install_*.sh
+run-*.sh
+
+# Cache files
+.channels_cache.json
+.users_cache.json
+
+# MCP configuration
+mcp-server-config.json
+
+# Package files for testing
+test-package.json
+
+# HTML test files
+test-*.html
+
+# Serena workspace files
+.serena/
+.claude/

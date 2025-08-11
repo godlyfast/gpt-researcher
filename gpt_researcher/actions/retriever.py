@@ -65,6 +65,10 @@ def get_retriever(retriever: str):
             from gpt_researcher.retrievers import MCPRetriever
 
             return MCPRetriever
+        case "linkedin":
+            from gpt_researcher.retrievers import LinkedInSalesNavigator
+
+            return LinkedInSalesNavigator
 
         case _:
             return None

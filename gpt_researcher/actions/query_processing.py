@@ -9,6 +9,63 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+async def detect_and_translate_query(query: str, cfg=None, cost_callback: callable = None) -> tuple[str, str]:
+    """
+    Detect if query is non-English and translate to English if needed.
+    
+    Args:
+        query: The original query
+        cfg: Configuration object
+        cost_callback: Callback for cost calculation
+    
+    Returns:
+        Tuple of (processed_query, original_language)
+    """
+    import re
+    
+    # Quick check if query contains non-ASCII characters (likely non-English)
+    if not re.match(r'^[\x00-\x7F]+$', query):
+        logger.info(f"Detected non-English query, translating to English for better search results")
+        
+        try:
+            # Use LLM to detect language and translate
+            detection_prompt = f"""Analyze this query and respond in JSON format:
+            Query: {query}
+            
+            Respond with:
+            {{
+                "language": "detected language name",
+                "is_english": false,
+                "english_translation": "translated query to English",
+                "search_optimized_query": "optimized English query for web search"
+            }}
+            
+            For search_optimized_query, make it search-engine friendly by:
+            - Removing filler words
+            - Focusing on key terms
+            - Adding relevant English keywords"""
+            
+            response = await create_chat_completion(
+                model=cfg.fast_llm_model if cfg else "gpt-4o-mini",
+                messages=[{"role": "user", "content": detection_prompt}],
+                temperature=0.1,
+                llm_provider=cfg.fast_llm_provider if cfg else "openai",
+                llm_kwargs=cfg.llm_kwargs if cfg else {},
+                cost_callback=cost_callback
+            )
+            
+            result = json_repair.loads(response)
+            
+            if not result.get("is_english", True):
+                translated_query = result.get("search_optimized_query", result.get("english_translation", query))
+                logger.info(f"Translated query from {result.get('language', 'unknown')} to English: {translated_query}")
+                return translated_query, result.get("language", "unknown")
+                
+        except Exception as e:
+            logger.warning(f"Failed to translate query: {e}, using original")
+            
+    return query, "english"
+
 async def get_search_results(query: str, retriever: Any, query_domains: List[str] = None, researcher=None) -> List[Dict[str, Any]]:
     """
     Get web search results for a given query.
@@ -32,6 +89,69 @@ async def get_search_results(query: str, retriever: Any, query_domains: List[str
     else:
         search_retriever = retriever(query, query_domains=query_domains)
     
+    # Handle LinkedIn with fallback to Tavily
+    if "linkedin" in retriever.__name__.lower():
+        logger.info("Using LinkedIn Sales Navigator retriever")
+        results = search_retriever.search()
+        
+        # Check if LinkedIn search failed (returns None or empty list for rate limit/auth issues)
+        if results is None or (isinstance(results, list) and len(results) == 0):
+            logger.warning("LinkedIn search failed or returned no results, falling back to Tavily")
+            
+            # Import Tavily and use it as fallback
+            from gpt_researcher.retrievers import TavilySearch
+            
+            # Detect and translate non-English queries for better Tavily results
+            cfg = getattr(researcher, 'cfg', None) if researcher else None
+            cost_callback = getattr(researcher, 'add_costs', None) if researcher else None
+            translated_query, original_language = await detect_and_translate_query(query, cfg, cost_callback)
+            
+            # Use translated query if it's different from original
+            if translated_query != query:
+                logger.info(f"Using translated query for Tavily search: {translated_query}")
+                # Add context about LinkedIn and the search intent
+                enhanced_query = f"{translated_query} LinkedIn Sales Navigator profiles startups investment"
+            else:
+                # Add context about LinkedIn in the query for better Tavily results
+                enhanced_query = f"{query} LinkedIn profiles Sales Navigator"
+            
+            tavily_retriever = TavilySearch(enhanced_query, query_domains=query_domains)
+            
+            try:
+                results = tavily_retriever.search()
+                logger.info(f"Tavily fallback search returned {len(results) if results else 0} results")
+                
+                # Add metadata to indicate these are fallback results
+                if results:
+                    for result in results:
+                        if isinstance(result, dict):
+                            result['source'] = 'Tavily (LinkedIn fallback)'
+                            result['fallback_reason'] = 'LinkedIn returned no results'
+                            if original_language != "english":
+                                result['query_translated'] = True
+                                result['original_language'] = original_language
+            except Exception as e:
+                logger.error(f"Tavily fallback also failed: {e}")
+                results = []
+        
+        return results
+    
+    # For standard retrievers, also check if translation might help
+    # This is especially useful for Tavily and other web search retrievers
+    if "tavily" in retriever.__name__.lower() or "web" in retriever.__name__.lower():
+        cfg = getattr(researcher, 'cfg', None) if researcher else None
+        cost_callback = getattr(researcher, 'add_costs', None) if researcher else None
+        translated_query, original_language = await detect_and_translate_query(query, cfg, cost_callback)
+        
+        if translated_query != query:
+            logger.info(f"Using translated query for {retriever.__name__}: {translated_query}")
+            search_retriever.query = translated_query
+            
+            # Store original query for reference
+            if hasattr(search_retriever, 'original_query'):
+                search_retriever.original_query = query
+    
+    # Standard retriever search
     return search_retriever.search()
 
 async def generate_sub_queries(
